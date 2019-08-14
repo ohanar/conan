@@ -117,8 +117,11 @@ MSVS_DEFAULT_TOOLSETS_INVERSE = {"v142": "16",
 def msvs_toolset(settings):
     toolset = settings.get_safe("compiler.toolset")
     if not toolset:
-        vs_version = settings.get_safe("compiler.version")
-        toolset = MSVS_DEFAULT_TOOLSETS.get(vs_version)
+        compiler_version = settings.get_safe("compiler.version")
+        if settings.get_safe("compiler") == "intel" and compiler_version:
+            toolset = "Intel C++ Compiler " + compiler_version
+        else:
+            toolset = MSVS_DEFAULT_TOOLSETS.get(compiler_version)
     return toolset
 
 
@@ -557,7 +560,8 @@ def unix_path(path, path_flavor=None):
         return None
 
     if os.path.exists(path):
-        path = get_cased_path(path)  # if the path doesn't exist (and abs) we cannot guess the casing
+        # if the path doesn't exist (and abs) we cannot guess the casing
+        path = get_cased_path(path)
 
     path_flavor = path_flavor or OSInfo.detect_windows_subsystem() or MSYS2
     path = path.replace(":/", ":\\")
@@ -606,7 +610,8 @@ def run_in_windows_bash(conanfile, bashcmd, cwd=None, subsystem=None, msys_mingw
             def get_path_value(container, subsystem_name):
                 """Gets the path from the container dict and returns a
                 string with the path for the subsystem_name"""
-                _path_key = next((name for name in container.keys() if "path" == name.lower()), None)
+                _path_key = next((name for name in container.keys()
+                                  if "path" == name.lower()), None)
                 if _path_key:
                     _path_value = container.get(_path_key)
                     if isinstance(_path_value, list):

@@ -18,11 +18,22 @@ runtime_definition_var_name = "CONAN_LINK_RUNTIME"
 cmake_in_local_cache_var_name = "CONAN_IN_LOCAL_CACHE"
 
 
+def get_base_compiler(settings):
+    if settings.get_safe("compiler.base"):
+        return settings.compiler.base
+    if settings.get_safe("compiler"):
+        return settings.compiler
+    return None
+
+
 def get_toolset(settings):
     if settings.get_safe("compiler") == "Visual Studio":
         subs_toolset = settings.get_safe("compiler.toolset")
         if subs_toolset:
             return subs_toolset
+    if settings.get_safe("compiler") == "intel" and settings.get_safe("compiler.base") == "Visual Studio":
+        compiler_version = settings.get_safe("compiler.version")
+        return "Intel C++ Compiler " + compiler_version
     return None
 
 
@@ -30,9 +41,9 @@ def get_generator(settings):
     if "CONAN_CMAKE_GENERATOR" in os.environ:
         return os.environ["CONAN_CMAKE_GENERATOR"]
 
-    compiler = settings.get_safe("compiler")
+    compiler = get_base_compiler(settings)
     arch = settings.get_safe("arch")
-    compiler_version = settings.get_safe("compiler.version")
+    compiler_version = compiler and compiler.get_safe("version")
     os_build, _, _, _ = get_cross_building_settings(settings)
     os_host = settings.get_safe("os")
 
@@ -71,9 +82,9 @@ def get_generator_platform(settings, generator):
     if "CONAN_CMAKE_GENERATOR_PLATFORM" in os.environ:
         return os.environ["CONAN_CMAKE_GENERATOR_PLATFORM"]
 
-    compiler = settings.get_safe("compiler")
+    compiler = get_base_compiler(settings)
     arch = settings.get_safe("arch")
-    compiler_version = settings.get_safe("compiler.version")
+    compiler_version = compiler and compiler.get_safe("version")
 
     if settings.get_safe("os") == "WindowsCE":
         return settings.get_safe("os.platform")
@@ -145,8 +156,8 @@ class CMakeDefinitionsBuilder(object):
 
     def _get_cpp_standard_vars(self):
         cppstd = cppstd_from_settings(self._conanfile.settings)
-        compiler = self._ss("compiler")
-        compiler_version = self._ss("compiler.version")
+        compiler = get_base_compiler(self._conanfile.settings)
+        compiler_version = compiler and compiler.get_safe("version")
 
         if not cppstd:
             return {}
@@ -305,13 +316,14 @@ class CMakeDefinitionsBuilder(object):
             definitions["CONAN_COMPILER_VERSION"] = str(compiler_version)
 
         # C, CXX, LINK FLAGS
-        if compiler == "Visual Studio":
+        if compiler == "Visual Studio" or self._ss("compiler.base") == "Visual Studio":
             if self._parallel:
                 flag = parallel_compiler_cl_flag(output=self._output)
                 definitions['CONAN_CXX_FLAGS'] = flag
                 definitions['CONAN_C_FLAGS'] = flag
         else:  # arch_flag is only set for non Visual Studio
-            arch_flag = architecture_flag(compiler=compiler, os=os_, arch=arch)
+            base_compiler = self._ss("compiler.base")
+            arch_flag = architecture_flag(compiler=(base_compiler or compiler), os=os_, arch=arch)
             if arch_flag:
                 definitions['CONAN_CXX_FLAGS'] = arch_flag
                 definitions['CONAN_SHARED_LINKER_FLAGS'] = arch_flag
@@ -349,7 +361,8 @@ class CMakeDefinitionsBuilder(object):
             fpic = self._conanfile.options.get_safe("fPIC")
             if fpic is not None:
                 shared = self._conanfile.options.get_safe("shared")
-                definitions["CONAN_CMAKE_POSITION_INDEPENDENT_CODE"] = "ON" if (fpic or shared) else "OFF"
+                definitions["CONAN_CMAKE_POSITION_INDEPENDENT_CODE"] = "ON" if (
+                    fpic or shared) else "OFF"
 
         # Adjust automatically the module path in case the conanfile is using the
         # cmake_find_package or cmake_find_package_multi

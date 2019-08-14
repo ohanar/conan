@@ -174,12 +174,15 @@ class CMake(object):
         the_os = self._settings.get_safe("os")
         is_clangcl = the_os == "Windows" and compiler == "clang"
         is_msvc = compiler == "Visual Studio"
-        if (is_msvc or is_clangcl) and self.generator in ["Ninja", "NMake Makefiles",
-                                                          "NMake Makefiles JOM"]:
-            with tools.vcvars(self._settings, force=True, filter_known_paths=False,
-                              output=self._conanfile.output):
-                self._conanfile.run(command)
-        else:
+        is_intel = compiler == "intel"
+        context = None
+        if self.generator in ["Ninja", "NMake Makefiles", "NMake Makefiles JOM", "Unix Makefiles"]:
+            if is_clangcl or is_msvc:
+                context = tools.vcvars(self._settings, force=True,
+                                       filter_known_paths=False, output=self._conanfile.output)
+            if is_intel:
+                context = tools.compilervars(self._settings, force=True)
+        with context or tools.no_op():
             self._conanfile.run(command)
 
     def configure(self, args=None, defs=None, source_dir=None, build_dir=None,
